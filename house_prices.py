@@ -1,22 +1,24 @@
 import pandas as pd
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
+from tensorflow.keras.models import Sequential,load_model
+from tensorflow.keras.layers import Dense,BatchNormalization,Dropout,Flatten
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, LabelEncoder, StandardScaler
+from tensorflow.keras.callbacks import ModelCheckpoint,EarlyStopping
+import matplotlib.pyplot as plt
 
 print(f"TensorFlow version {tf.__version__}")
 np.set_printoptions(threshold=np.inf)
 pd.set_option('display.max_rows', 100)
 pd.set_option('display.max_columns', 100)
-pd.set_option('display.max_column_width', 100)
 pd.set_option('display.width', 110)
 
 
-data = pd.read_csv("C:/Users/emoradia/OneDrive - Capgemini/Desktop/Home/kaggle/house prices/train.csv")
-submit_data = pd.read_csv("C:/Users/emoradia/OneDrive - Capgemini/Desktop/Home/kaggle/house prices/test.csv")
+data = pd.read_csv("C:/Users/emoradia/OneDrive - Capgemini/Desktop/Home/git/kaggle/house_prices//train.csv")
+submit_data = pd.read_csv("C:/Users/emoradia/OneDrive - Capgemini/Desktop/Home/git/kaggle/house_prices/test.csv")
 
+# make a list of the column names for categorical and numerical columns
 num_columns = []
 cat_columns = []
 
@@ -40,25 +42,30 @@ print(f"Test Samples: {len(test_data)}")
 print(f"Train Samples: {len(train_data)}")
 
 data.head()
-data.describe()
+data.describe(include="all")
 data.keys().sort_values()
 data.isna().sum()
 
+# replace missing categorical values with "Missing"
 for column in cat_columns:
     train_data[column].fillna(value="Missing",inplace=True)
     test_data[column].fillna(value="Missing",inplace=True)
-    
+
+# replace missing numerical values with the mean
 for column in num_columns:
-    train_data[column].fillna(train_data[column].median(), inplace = True)
-    test_data[column].fillna(test_data[column].median(), inplace = True)
-    
+    train_data[column].fillna(train_data[column].mean(), inplace = True)
+    test_data[column].fillna(test_data[column].mean(), inplace = True)
+
+# split the train data to train and validation
 train_data, val_data = train_test_split(train_data, test_size=0.2)
 
+# scale the numeric values by standardizing
 scaler = StandardScaler()
 train_data[num_columns] = scaler.fit_transform(train_data[num_columns])
 val_data[num_columns] = scaler.transform(val_data[num_columns])
 test_data[num_columns] = scaler.transform(test_data[num_columns])
 
+# transform pandas dataframe to tensors, shuffle and batch
 def df_to_dataset(dataframe, shuffle=True,batch_size=32):
     dataframe = dataframe.copy()
     labels = dataframe.pop('SalePrice')
@@ -81,8 +88,10 @@ for feature_batch, label_batch in train_ds.take(1):
 
 feature_columns = []
 
+# remove SalePrice as this is the response variable
 num_columns.remove('SalePrice')
 
+# define the feature layer
 for column in num_columns:
     column = tf.feature_column.numeric_column(column)
     feature_columns.append(column)
@@ -122,25 +131,47 @@ model.compile(loss='mse',
                 optimizer=tf.keras.optimizers.Adam(.0001),
                 metrics=['mse'])
 
-z=0
-for i in (val_data.isna().sum() == 0):
-    if i == False:
-        z=z+1
-z
+# Create Tensorflow checkpoint objects
+def get_checkpoint_every_epoch():
+    checkpoint_path = 'model_checkpoints/checkpoint'
+    checkpoint = ModelCheckpoint(filepath=checkpoint_path,frequency='epoch',save_weights_only=True,
+    verbose=1)
+    return checkpoint
 
+def get_early_stopping():
+    early_stopping_val = EarlyStopping(monitor="loss",patience=3,verbose=1)
+    return early_stopping_val
 
-train_data["SalePrice"]
+checkpoint_every_epoch = get_checkpoint_every_epoch()
+early_stopping = get_early_stopping()
+callbacks = [checkpoint_every_epoch, early_stopping]
 
+history = model.fit(train_ds,validation_data=val_ds,epochs=50,callbacks=callbacks,verbose=1)
 
-history = model.fit(train_ds,validation_data=val_ds,epochs=50,verbose=1)
+def get_test_accuracy(model, test_ds):
+    test_loss, test_mse = model.evaluate(test_ds, verbose=0)
+    print(f'mse: {test_mse}')
+    print(f'loss: {test_loss}')
 
-loss, mse = model.evaluate(test_ds)
-print("mse", mse)
+get_test_accuracy(model, test_ds)
 
+%matplotlib inline
+plt.plot(history.history['loss'])
+plt.plot(history.history['val_loss'])
+plt.title('Loss vs. epochs')
+plt.ylabel('Loss')
+plt.xlabel('Epoch')
+plt.legend(['Training', 'Validation'], loc='upper right')
+plt.show()
 
-
-
-
+%matplotlib inline
+plt.plot(history.history['mse'])
+plt.plot(history.history['val_mse'])
+plt.title('MSE vs. epochs')
+plt.ylabel('MSE')
+plt.xlabel('Epoch')
+plt.legend(['Training', 'Validation'], loc='upper right')
+plt.show()
 
 
 
