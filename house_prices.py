@@ -59,11 +59,19 @@ for column in num_columns:
 # split the train data to train and validation
 train_data, val_data = train_test_split(train_data, test_size=0.2)
 
+# remove SalePrice as this is the response variable
+num_columns.remove('SalePrice')
+
 # scale the numeric values by standardizing
 scaler = StandardScaler()
 train_data[num_columns] = scaler.fit_transform(train_data[num_columns])
 val_data[num_columns] = scaler.transform(val_data[num_columns])
 test_data[num_columns] = scaler.transform(test_data[num_columns])
+
+scaler2 = StandardScaler()
+train_data["SalePrice"] = scaler2.fit_transform(train_data["SalePrice"].values.reshape(-1,1))
+val_data["SalePrice"] = scaler2.transform(val_data["SalePrice"].values.reshape(-1,1))
+test_data["SalePrice"] = scaler2.transform(test_data["SalePrice"].values.reshape(-1,1))
 
 # transform pandas dataframe to tensors, shuffle and batch
 def df_to_dataset(dataframe, shuffle=True,batch_size=32):
@@ -88,9 +96,6 @@ for feature_batch, label_batch in train_ds.take(1):
 
 feature_columns = []
 
-# remove SalePrice as this is the response variable
-num_columns.remove('SalePrice')
-
 # define the feature layer
 for column in num_columns:
     column = tf.feature_column.numeric_column(column)
@@ -110,10 +115,10 @@ def get_model():
         Dropout(0.1),
         Dense(128, activation="relu",name="Dense_3"),
         BatchNormalization(),
-        Dropout(0.1),
+        Dropout(0.2),
         Dense(256, activation="relu",name="Dense_4"),
         BatchNormalization(),
-        Dropout(0.1),
+        Dropout(0.2),
         Dense(128, activation="relu",name="Dense_5"),
         BatchNormalization(),
         Dropout(0.1),
@@ -128,7 +133,7 @@ def get_model():
 model = get_model()
 
 model.compile(loss='mse',
-                optimizer=tf.keras.optimizers.Adam(.0001),
+                optimizer=tf.keras.optimizers.Adam(.001),
                 metrics=['mse'])
 
 # Create Tensorflow checkpoint objects
@@ -173,10 +178,45 @@ plt.xlabel('Epoch')
 plt.legend(['Training', 'Validation'], loc='upper right')
 plt.show()
 
+# make model predictions
+
+# set the submit data with all the same transformations and preprocessing
+submit_data.keys()
+submit_data.shape
+
+# replace missing categorical values with "Missing"
+for column in cat_columns:
+    submit_data[column].fillna(value="Missing",inplace=True)
+
+# replace missing numerical values with the mean
+for column in num_columns:
+    submit_data[column].fillna(train_data[column].mean(), inplace = True)
+
+# scale the numeric values by standardizing
+scaler = StandardScaler()
+submit_data[num_columns] = scaler.fit_transform(submit_data[num_columns])
+
+# get the first Id columns before transforming to a tensorflow dataset
+preds2 = submit_data["Id"]
 
 
+submit_data['SalePrice'] = 0
+submit_data = df_to_dataset(submit_data, shuffle=False, batch_size=batch_size)
 
+# make predictions and scale back to original scale
+preds = model.predict(submit_data)
+preds = scaler2.inverse_transform(preds)
 
+# create a dataframe for the id and predicted SalePrice
+preds2 = preds2.to_numpy(preds2)
 
+preds2.shape
+preds.shape
+preds = preds[:,0]
 
+predictions = pd.DataFrame({"Id":preds2,"SalePrice":preds})
+predictions
+
+predictions.to_csv("C:/Users/emoradia/OneDrive - Capgemini/Desktop/Home/git/kaggle/house_prices/predictions.csv",
+                   index=False)
 
