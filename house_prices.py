@@ -68,6 +68,7 @@ train_data[num_columns] = scaler.fit_transform(train_data[num_columns])
 val_data[num_columns] = scaler.transform(val_data[num_columns])
 test_data[num_columns] = scaler.transform(test_data[num_columns])
 
+# use another separate scaler for saleprice to undo the sale for testing
 scaler2 = StandardScaler()
 train_data["SalePrice"] = scaler2.fit_transform(train_data["SalePrice"].values.reshape(-1,1))
 val_data["SalePrice"] = scaler2.transform(val_data["SalePrice"].values.reshape(-1,1))
@@ -110,19 +111,28 @@ feature_layer = tf.keras.layers.DenseFeatures(feature_columns)
 def get_model():
     model = Sequential([
         feature_layer,
-        Dense(64, activation="relu",name="Dense_2"),
+        Dense(64, activation="relu",name="Dense_1"),
         BatchNormalization(),
         Dropout(0.1),
+        Dense(128, activation="relu",name="Dense_2"),
+        BatchNormalization(),
+        Dropout(0.2),
         Dense(128, activation="relu",name="Dense_3"),
         BatchNormalization(),
         Dropout(0.2),
         Dense(256, activation="relu",name="Dense_4"),
         BatchNormalization(),
         Dropout(0.2),
-        Dense(128, activation="relu",name="Dense_5"),
+        Dense(256, activation="relu",name="Dense_5"),
+        BatchNormalization(),
+        Dropout(0.2),
+        Dense(128, activation="relu",name="Dense_6"),
         BatchNormalization(),
         Dropout(0.1),
-        Dense(64, activation="relu",name="Dense_6"),
+        Dense(128, activation="relu",name="Dense_7"),
+        BatchNormalization(),
+        Dropout(0.2),
+        Dense(64, activation="relu",name="Dense_8"),
         BatchNormalization(),
         Dropout(0.1),
         Dense(1)      
@@ -144,7 +154,7 @@ def get_checkpoint_every_epoch():
     return checkpoint
 
 def get_early_stopping():
-    early_stopping_val = EarlyStopping(monitor="loss",patience=3,verbose=1)
+    early_stopping_val = EarlyStopping(monitor="loss",patience=8,verbose=1)
     return early_stopping_val
 
 checkpoint_every_epoch = get_checkpoint_every_epoch()
@@ -153,6 +163,7 @@ callbacks = [checkpoint_every_epoch, early_stopping]
 
 history = model.fit(train_ds,validation_data=val_ds,epochs=50,callbacks=callbacks,verbose=1)
 
+# test the trained model on the test data
 def get_test_accuracy(model, test_ds):
     test_loss, test_mse = model.evaluate(test_ds, verbose=0)
     print(f'mse: {test_mse}')
